@@ -1,0 +1,201 @@
+Setting up MCQ APIs
+
+Introduction
+In this chapter, we'll cover how to create a CRUD API for managing multiple-choice questions (MCQs) in Django using APIView from Django REST framework. This API will only be accessible to authenticated users. Each MCQ will have the following fields:
+
+id: A UUID that uniquely identifies each MCQ.
+body: The question text.
+explanation: A text field explaining the correct answer.
+options: A JSON field containing the possible answer options. Each option will have body and is_correct fields.
+Setting Up the Project
+Ensure you have Django and Django REST framework installed. You will also need the djangorestframework-simplejwt package for JWT authentication.
+
+Add these packages to your INSTALLED_APPS in settings.py:
+
+# settings.py
+
+INSTALLED_APPS = [
+    ...
+    'rest_framework',
+    'rest_framework_simplejwt',
+    ...
+]
+Configure Django REST framework to use JWT authentication in settings.py:
+
+# settings.py
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}
+Create the "mcqs" App
+Navigate to your project directory:
+
+cd mcqbattle
+Create the new app:
+
+python manage.py startapp mcqs
+Register the new app in your project settings: Open settings.py and add 'mcqs' to the INSTALLED_APPS list:
+
+INSTALLED_APPS = [
+	...
+    'mcqs',  # Add this line
+   	...
+]
+Creating the MCQ Model
+First, create the MCQ model. In mcqs/models.py, define the model with the specified fields:
+
+# mcqs/models.py
+import uuid
+from django.db import models
+
+class MCQ(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    body = models.TextField()
+    explanation = models.TextField()
+    options = models.JSONField()
+Run the migrations to create the MCQ table in your database:
+
+python manage.py makemigrations
+python manage.py migrate
+Creating the Serializers
+Create a serializers.py file in mcqs folder and add the following code to define the serializer for the MCQ model without using ModelSerializer:
+
+# serializers.py
+from rest_framework import serializers
+
+class OptionSerializer(serializers.Serializer):
+    body = serializers.CharField(max_length=1000)
+    is_correct = serializers.BooleanField()
+
+class MCQSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    body = serializers.CharField(max_length=2000)
+    explanation = serializers.CharField(max_length=2000)
+    options = OptionSerializer(many=True)
+Creating the Views
+Create views to handle the CRUD operations for the MCQ model using APIView. In your app's views.py, define the views:
+
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import MCQ
+from .serializers import MCQSerializer
+from rest_framework.permissions import IsAuthenticated
+
+class MCQListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        mcqs = MCQ.objects.all()
+        serializer = MCQSerializer(mcqs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = MCQSerializer(data=request.data)
+        if serializer.is_valid():
+            mcq = MCQ.objects.create(
+                body=serializer.validated_data['body'],
+                explanation=serializer.validated_data['explanation'],
+                options=serializer.validated_data['options']
+            )
+            mcq.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class MCQRetrieveUpdateDestroyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        try:
+            return MCQ.objects.get(pk=pk)
+        except MCQ.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        mcq = self.get_object(pk)
+        if mcq is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = MCQSerializer(mcq)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk):
+        mcq = self.get_object(pk)
+        if mcq is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = MCQSerializer(mcq, data=request.data)
+        if serializer.is_valid():
+            mcq.body = serializer.validated_data['body']
+            mcq.explanation = serializer.validated_data['explanation']
+            mcq.options = serializer.validated_data['options']
+            mcq.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        mcq = self.get_object(pk)
+        if mcq is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        mcq.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+Routing the Views
+Update your urls.py file to include routes for the MCQ CRUD API:
+
+# urls.py
+from django.contrib import admin
+from django.urls import path
+
+from auth_app.views import LoginView, ProtectedView, RegisterView
+from mcqs.views import MCQListCreateView, MCQRetrieveUpdateDestroyView
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("register", RegisterView.as_view(), name="register"),
+    path("login", LoginView.as_view(), name="login"),
+    path("protected", ProtectedView.as_view(), name="protected"),
+    path("mcqs", MCQListCreateView.as_view(), name="mcq-list-create"),
+    path("mcqs/<uuid:pk>", MCQRetrieveUpdateDestroyView.as_view(), name="mcq-detail"),
+]
+Testing the API
+List and Create MCQs:
+
+Endpoint: GET /mcqs/
+Endpoint: POST /mcqs/
+Payload for POST:
+{
+  "body": "What is the capital of France?",
+  "explanation": "The capital of France is Paris.",
+  "options": [
+    { "body": "Paris", "is_correct": true },
+    { "body": "London", "is_correct": false },
+    { "body": "Berlin", "is_correct": false },
+    { "body": "Madrid", "is_correct": false }
+  ]
+}
+Retrieve, Update, and Delete MCQs:
+
+Endpoint: GET /mcqs/<uuid:pk>/
+Endpoint: PUT /mcqs/<uuid:pk>/
+Endpoint: DELETE /mcqs/<uuid:pk>/
+Payload for PUT:
+{
+  "body": "What is the capital of France?",
+  "explanation": "The capital of France is Paris.",
+  "options": [
+    { "body": "Paris", "is_correct": true },
+    { "body": "London", "is_correct": false },
+    { "body": "Berlin", "is_correct": false },
+    { "body": "Madrid", "is_correct": false }
+  ]
+}
+Conclusion
+In this chapter, we covered how to create a CRUD API for managing MCQs in Django using APIView from Django REST framework. This API is accessible only to authenticated users, ensuring secure access to the data. We defined the MCQ model, created serializers, views, and routes, and configured JWT authentication to protect the API. By following the steps outlined in this chapter, you can build a robust and secure backend for managing MCQs in your 1V1 MCQ Battle application.
+
+For more information, refer to the Django REST framework documentation and the djangorestframework-simplejwt documentation.
+
+
+
+https://www.django-rest-framework.org/api-guide/views/
+https://django-rest-framework-simplejwt.readthedocs.io/en/latest/
