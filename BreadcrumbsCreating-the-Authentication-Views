@@ -168,3 +168,5 @@ Conclusion
 In this chapter, we covered how to create registration and login APIs using APIView from Django REST framework and JWT for authentication. We also ensured that these endpoints are protected and only accessible to authenticated users. By following the steps outlined in this chapter, you can build a secure and efficient authentication system for your Django application.
 
 For more information, refer to the Django REST framework documentation and the djangorestframework-simplejwt documentation.
+https://www.django-rest-framework.org/api-guide/views/
+https://django-rest-framework-simplejwt.readthedocs.io/en/latest/
