@@ -1,0 +1,170 @@
+Creating the Authentication Views
+Introduction
+Authentication is a fundamental aspect of web applications. JSON Web Tokens (JWT) provide a compact and self-contained way for securely transmitting information between parties as a JSON object. This chapter will explain JWT, its benefits, and how to implement JWT authentication in a Django project.
+
+What is JWT?
+JSON Web Token (JWT) is an open standard (RFC 7519) that defines a compact and self-contained way for securely transmitting information between parties as a JSON object. This information can be verified and trusted because it is digitally signed. JWTs can be signed using a secret (with the HMAC algorithm) or a public/private key pair using RSA or ECDSA.
+
+Structure of JWT
+A JWT is composed of three parts:
+
+Header: Contains metadata about the type of token and the signing algorithm used.
+Payload: Contains the claims, which are statements about an entity (typically, the user) and additional data.
+Signature: Used to verify the integrity of the token and ensure it has not been tampered with.
+The JWT is encoded as a Base64URL string consisting of the header, payload, and signature, separated by dots.
+
+Benefits of JWT
+Compact: Because of their size, JWTs can be sent via URL, POST parameters, or inside an HTTP header, and it is especially useful in mobile environments.
+Self-contained: The payload contains all the necessary information about the user, avoiding multiple database lookups.
+Security: JWTs are signed, ensuring that the claims cannot be altered after the token is issued.
+Implementing JWT Authentication in Django
+Setup
+First, ensure you have Django and Django REST framework installed. You will also need the djangorestframework-simplejwt package for JWT support.
+
+pip install djangorestframework-simplejwt
+Add these packages to your INSTALLED_APPS in settings.py:
+
+# settings.py
+
+INSTALLED_APPS = [
+    ...
+    'rest_framework',
+    'rest_framework_simplejwt',
+    ...
+]
+Configuring Django REST Framework
+Configure Django REST framework to use JWT authentication in settings.py:
+
+# settings.py
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+Creating the Authentication Views
+Create views to handle user registration and login using APIView. In your auth_app app's views.py, define the views:
+
+# views.py
+from auth_app.models import User
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
+from .serializers import RegistrationSerializer, LoginSerializer
+from rest_framework.permissions import IsAuthenticated
+
+
+class RegisterView(APIView):
+    def post(self, request):
+        serializer = RegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+
+            # Check if user already exists
+            user = User.objects.filter(email=serializer.validated_data["email"]).first()
+            if user is not None:
+                return Response(
+                    {"error": "User already exists"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create user
+            user = User.objects.create(
+                first_name=serializer.validated_data["first_name"],
+                last_name=serializer.validated_data["last_name"],
+                email=serializer.validated_data["email"],
+            )
+            user.set_password(serializer.validated_data["password"])
+            user.save()
+            return Response(
+                {
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "email": user.email,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LoginView(APIView):
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            password = serializer.validated_data["password"]
+            user = User.objects.filter(email=email).first()
+            if user is None:
+                return Response(
+                    {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
+                )
+            if not user.check_password(password):
+                return Response(
+                    {"error": "Invalid password"}, status=status.HTTP_400_BAD_REQUEST
+                )
+            refresh = RefreshToken.for_user(user)
+            return Response(
+                {
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ProtectedView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(
+            data={"message": "You have accessed a protected view!"},
+            status=status.HTTP_200_OK,
+        )
+Routing the Views
+Update your urls.py file to include routes for the authentication endpoints:
+
+# urls.py
+from django.contrib import admin
+from django.urls import path
+
+from auth_app.views import LoginView, ProtectedView, RegisterView
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("register", RegisterView.as_view(), name="register"),
+    path("login", LoginView.as_view(), name="login"),
+    path("protected", ProtectedView.as_view(), name="protected"),
+]
+Testing the API
+Register a New User:
+
+Endpoint: POST /register/
+Payload:
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john.doe@example.com",
+  "password": "securepassword123"
+}
+Login a User:
+
+Endpoint: POST /login/
+Payload:
+{
+  "email": "john.doe@example.com",
+  "password": "securepassword123"
+}
+Response:
+{
+  "refresh": "your-refresh-token",
+  "access": "your-access-token"
+}
+Access Protected View:
+
+Endpoint: GET /protected/
+Headers:
+Authorization: Bearer your-access-token
+Conclusion
+In this chapter, we covered how to create registration and login APIs using APIView from Django REST framework and JWT for authentication. We also ensured that these endpoints are protected and only accessible to authenticated users. By following the steps outlined in this chapter, you can build a secure and efficient authentication system for your Django application.
+
+For more information, refer to the Django REST framework documentation and the djangorestframework-simplejwt documentation.
